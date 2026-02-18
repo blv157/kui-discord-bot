@@ -61,7 +61,39 @@ async def on_message(message: discord.Message):
     # Ensure user is in the database
     await database.add_user(user_id, username, server_id)
 
+
     await bot.process_commands(message)
+
+
+@bot.command(name="sync", description="Syncs slash commands to the current guild for instant updates")
+async def sync(ctx):
+    if ctx.author.id not in ADMIN_USERS:
+        await ctx.send("❌ You don't have permission to sync commands.")
+        return
+    
+    await ctx.send("🔄 Syncing commands...")
+    try:
+        # Sync to the current guild (instant)
+        bot.tree.copy_global_to(guild=ctx.guild)
+        synced = await bot.tree.sync(guild=ctx.guild)
+        await ctx.send(f"✅ Synced {len(synced)} commands to this guild!")
+    except Exception as e:
+        await ctx.send(f"❌ Failed to sync: {e}")
+
+
+@bot.command(name="unsync", description="Clears guild-specific commands (removes duplicates)")
+async def unsync(ctx):
+    if ctx.author.id not in ADMIN_USERS:
+        await ctx.send("❌ You don't have permission to use this command.")
+        return
+    
+    await ctx.send("🔄 Clearing guild commands...")
+    try:
+        bot.tree.clear_commands(guild=ctx.guild)
+        await bot.tree.sync(guild=ctx.guild)
+        await ctx.send("✅ Guild commands cleared! You are now using only global commands (updates take ~1 hour).")
+    except Exception as e:
+        await ctx.send(f"❌ Failed to unsync: {e}")
 
 
 
@@ -309,6 +341,13 @@ async def crash_game(interaction: discord.Interaction, amount: int):
     await casino_games.crash(interaction, amount)
 
 
+
+
+#ROULETTE IMPLEMENTATION
+@bot.tree.command(name="roulette", description="Play Roulette! Bet on a color (Red, Black, Green) or a number (0-36, 00).")
+@app_commands.describe(amount="Amount to wager", choice="Color (Red, Black, Green) or Number (0-36, 00)")
+async def roulette(interaction: discord.Interaction, amount: int, choice: str):
+    await casino_games.roulette(interaction, amount, choice)
 
 # 🔹 Main Entry Point
 def main():

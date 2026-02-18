@@ -452,3 +452,99 @@ async def crash(interaction: discord.Interaction, amount: int):
 #Loans? Message 
 #RPS, Blackjack, Crash, Roullette, Poker, Jackpot (money = percent chance), Lottery tickets, type racer (maybe), hide and seek (bot sends meesage in random text channel ppl must find)
 #Gacha Machine
+
+async def roulette(interaction: discord.Interaction, amount: int, choice: str):
+    user_id = interaction.user.id
+    
+    # 1. Validate Input
+    choice = choice.lower().strip()
+    valid_colors = ["red", "black", "green"]
+    valid_numbers = [str(i) for i in range(37)] + ["00"] # "0" to "36" and "00"
+    
+    bet_type = None # "color" or "number"
+    
+    if choice in valid_colors:
+        bet_type = "color"
+    elif choice in valid_numbers:
+        bet_type = "number"
+    else:
+        await interaction.response.send_message(
+            "❌ Invalid choice! Please bet on a color (`red`, `black`, `green`) or a number (`0`-`36`, `00`).", 
+            ephemeral=True
+        )
+        return
+
+    # 2. Check Balance
+    balance = await database.get_balance(user_id)
+    if amount <= 0:
+        await interaction.response.send_message("❌ Amount must be greater than 0!", ephemeral=True)
+        return
+    if amount > balance:
+        await interaction.response.send_message(f"❌ You don't have enough coins! Your balance is {balance}.", ephemeral=True)
+        return
+
+    # 3. Deduct Bet
+    await database.update_balance(user_id, -amount)
+
+    # 4. Define Wheel
+    wheel_numbers = [str(i) for i in range(37)] + ["00"]
+    
+    # Helper to determine color
+    def get_color(num_str):
+        if num_str in ["0", "00"]:
+            return "green"
+        n = int(num_str)
+        # Red numbers: 1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36
+        red_numbers = {1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36}
+        if n in red_numbers:
+            return "red"
+        else:
+            return "black"
+
+    # 5. Spin
+    result_number = random.choice(wheel_numbers)
+    result_color = get_color(result_number)
+
+    # 6. Determine Win
+    won = False
+    payout = 0
+    
+    if bet_type == "color":
+        if choice == result_color:
+            won = True
+            # Payout for Red/Black is 1:1 (Amount * 2)
+            # Payout for Green (0 or 00) is treated as a color bet here? 
+            # If they bet "green", and it hits 0 or 00 (which are green), they win.
+            # Green covers 2 spots (2/38). Fair payout is 18x. 
+            if choice == "green":
+                 payout = amount * 18 # 17:1 odds
+            else:
+                 payout = amount * 2 # 1:1 odds
+            
+    elif bet_type == "number":
+        if choice == result_number:
+            won = True
+            payout = amount * 36 # 35:1 payout (36x total)
+
+    # 7. Update Balance & Send Result
+    
+    # Color mapping for Embed
+    embed_color = discord.Color.red() if result_color == "red" else discord.Color.default()
+    if result_color == "green":
+        embed_color = discord.Color.green()
+
+    message = f"You bet **{amount}** on **{choice.upper()}**.\n"
+    message += f"The ball landed on **{result_number} ({result_color.upper()})**!\n"
+
+    if won:
+        profit = payout - amount
+        await database.update_balance(user_id, payout) # Add payout (which includes original bet)
+        message += f"🎉 **YOU WON!** You received **{payout}** coins (Profit: {profit})."
+        title = "Roulette Result: WIN! 🤑"
+    else:
+        message += f"💀 **You lost.** Better luck next time!"
+        title = "Roulette Result: LOST 💸"
+
+    embed = discord.Embed(title=title, description=message, color=embed_color)
+
+    await interaction.response.send_message(embed=embed)
